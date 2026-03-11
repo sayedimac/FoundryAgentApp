@@ -34,6 +34,20 @@ jobs:
         with:
           name: .net-app
           path: ${{env.DOTNET_ROOT}}/myapp
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_E7205144BBDF4E59A9F5E1D9850E9F00 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_EEC112F5AC124242B7D74482E899F7FB }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_998B8782491E457C9CE85B4CE0933910 }}
+      - name: Run Evaluation
+        uses: microsoft/ai-agent-evals@v3-beta
+        with:
+          # Replace placeholders with values for your Foundry Project
+          azure-ai-project-endpoint: "https://johan-test-resource.services.ai.azure.com/api/projects/johan-test"
+          deployment-name: "gpt-4.1"
+          agent-ids: "test-agent:1"
+          data-path: ${{ github.workspace }}/testdata/eval.json
 
   deploy:
     runs-on: windows-latest
@@ -54,6 +68,14 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_E7205144BBDF4E59A9F5E1D9850E9F00 }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_EEC112F5AC124242B7D74482E899F7FB }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_998B8782491E457C9CE85B4CE0933910 }}
+      - name: Run Evaluation
+        uses: microsoft/ai-agent-evals@v3-beta
+        with:
+          # Replace placeholders with values for your Foundry Project
+          azure-ai-project-endpoint: "<your-ai-project-endpoint>"
+          deployment-name: "<your-deployment-name>"
+          agent-ids: "<your-ai-agent-ids>"
+          data-path: ${{ github.workspace }}/path/to/your/data-file
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
@@ -62,4 +84,5 @@ jobs:
           app-name: 'alwaysonnet'
           slot-name: 'Production'
           package: .
+
           
