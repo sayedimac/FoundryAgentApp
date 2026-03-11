@@ -48,7 +48,7 @@ jobs:
           # Replace placeholders with values for your Foundry Project
           azure-ai-project-endpoint: "https://johan-test-resource.services.ai.azure.com/api/projects/johan-test"
           deployment-name: "gpt-4.1"
-          agent-ids: "test-agent:1"
+          agent-ids: "test-agent-1"
           data-path: ${{ github.workspace }}/testdata/eval.json
 
   deploy:
@@ -88,6 +88,7 @@ jobs:
           package: .
 
           
+
 
 
 
