@@ -1,0 +1,95 @@
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+
+name: Build and deploy ASP.Net Core app to Azure Web App - alwaysonnet
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
+      
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET Core
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Build with dotnet
+        run: dotnet build --configuration Release
+
+      - name: dotnet publish
+        run: dotnet publish -c Release -o "${{env.DOTNET_ROOT}}/myapp"
+
+      - name: Upload artifact for deployment job
+        uses: actions/upload-artifact@v4
+        with:
+          name: .net-app
+          path: ${{env.DOTNET_ROOT}}/myapp
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_E7205144BBDF4E59A9F5E1D9850E9F00 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_EEC112F5AC124242B7D74482E899F7FB }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_998B8782491E457C9CE85B4CE0933910 }}
+      - name: Run Foundry Agent/LLM Evaluation
+        uses: microsoft/ai-agent-evals@v3-beta
+        with:
+          # Replace placeholders with values for your Foundry Project
+          azure-ai-project-endpoint: "https://johan-test-resource.services.ai.azure.com/api/projects/johan-test"
+          deployment-name: "gpt-4.1"
+          agent-ids: "test-agent-1:v1"
+          data-path: ${{ github.workspace }}/testdata/eval.json
+
+  deploy:
+    runs-on: windows-latest
+    needs: build
+    permissions:
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
+
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: .net-app
+      
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_E7205144BBDF4E59A9F5E1D9850E9F00 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_EEC112F5AC124242B7D74482E899F7FB }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_998B8782491E457C9CE85B4CE0933910 }}
+      - name: Run Evaluation
+        uses: microsoft/ai-agent-evals@v3-beta
+        with:
+          # Replace placeholders with values for your Foundry Project
+          azure-ai-project-endpoint: "<your-ai-project-endpoint>"
+          deployment-name: "<your-deployment-name>"
+          agent-ids: "<your-ai-agent-ids>"
+          data-path: ${{ github.workspace }}/path/to/your/data-file
+
+      - name: Deploy to Azure Web App
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'alwaysonnet'
+          slot-name: 'Production'
+          package: .
+
+          
+
+
+
+
+

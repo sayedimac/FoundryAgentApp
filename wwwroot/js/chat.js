@@ -33,6 +33,13 @@ class ChatApp {
             ]
         };
 
+        // Single Page mode state
+        this.uiMode = 'chat';           // 'chat' | 'singlepage'
+        this.spHistory = [];             // [{prompt, content, title}]
+        this.spCurrentIndex = -1;
+        this.spSelectedText = '';
+        this.spCurrentPrompt = '';
+
         this.init();
     }
 
@@ -175,6 +182,12 @@ class ChatApp {
             this.selectAgent(e.target.value);
         });
 
+        // UI mode selection
+        const uiModeSelect = document.getElementById('uiModeSelect');
+        if (uiModeSelect) {
+            uiModeSelect.addEventListener('change', (e) => this.switchUiMode(e.target.value));
+        }
+
         // New chat button
         document.getElementById('newChatBtn').addEventListener('click', () => {
             this.createNewSession();
@@ -208,6 +221,40 @@ class ChatApp {
                 this.sendMessage();
             }
         });
+
+        // Single Page navigation buttons
+        document.getElementById('spBackBtn').addEventListener('click', () => this.navigateBack());
+        document.getElementById('spForwardBtn').addEventListener('click', () => this.navigateForward());
+
+        // Single Page context menu actions
+        document.getElementById('spPromptOnSelected').addEventListener('click', () => this.promptOnSelected());
+        document.getElementById('spMoreOnThis').addEventListener('click', () => this.moreOnThis());
+
+        // Single Page inline prompt
+        document.getElementById('spInlineSubmit').addEventListener('click', () => this.submitInlinePrompt());
+        document.getElementById('spInlineCancel').addEventListener('click', () => this.hideInlinePrompt());
+        document.getElementById('spInlineInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.submitInlinePrompt();
+            }
+        });
+
+        // Text selection in SP content (show context menu)
+        const spContent = document.getElementById('spContent');
+        if (spContent) {
+            spContent.addEventListener('mouseup', (e) => this.handleTextSelection(e));
+        }
+        document.addEventListener('keyup', (e) => {
+            if (this.uiMode === 'singlepage') this.handleTextSelection(e);
+        });
+
+        // Hide context menu when clicking outside it or the inline prompt
+        document.addEventListener('mousedown', (e) => {
+            if (!e.target.closest('#spContextMenu') && !e.target.closest('#spInlinePrompt')) {
+                this.hideSpContextMenu();
+            }
+        });
     }
 
     setupMarkdown() {
@@ -233,12 +280,41 @@ class ChatApp {
 
         if (!message || !this.isConnected) return;
 
-        // Snapshot attachments before we clear them.
-        const outgoingAttachments = Array.isArray(this.attachedFiles) ? [...this.attachedFiles] : [];
-
         // Clear input and reset height
         input.value = '';
         input.style.height = 'auto';
+
+        if (this.uiMode === 'singlepage') {
+            this.spCurrentPrompt = message;
+
+            // Show loading state in SP content
+            const contentEl = document.getElementById('spContent');
+            if (contentEl) {
+                contentEl.innerHTML = '<div class="sp-loading"><span class="sp-loading-text">Generating response…</span></div>';
+            }
+
+            // If not at the latest item, discard forward history
+            if (this.spCurrentIndex < this.spHistory.length - 1) {
+                this.spHistory = this.spHistory.slice(0, this.spCurrentIndex + 1);
+            }
+
+            this.showTypingIndicator();
+
+            try {
+                await this.connection.invoke('SendMessage', this.sessionId, this.currentAgent, message, []);
+            } catch (error) {
+                console.error('Send message error (SP):', error);
+                this.hideTypingIndicator();
+                const contentElErr = document.getElementById('spContent');
+                if (contentElErr) {
+                    contentElErr.innerHTML = `<p style="color:var(--error-color)">Failed to send: ${this.escapeHtml(error.message)}</p>`;
+                }
+            }
+            return;
+        }
+
+        // Snapshot attachments before we clear them.
+        const outgoingAttachments = Array.isArray(this.attachedFiles) ? [...this.attachedFiles] : [];
 
         // Hide welcome message if visible
         this.hideWelcomeMessage();
@@ -274,6 +350,22 @@ class ChatApp {
     handleMessageChunk(messageId, chunk) {
         this.hideTypingIndicator();
 
+        if (this.uiMode === 'singlepage') {
+            if (this.currentMessageId !== messageId) {
+                this.currentMessageId = messageId;
+                this.currentMessageContent = '';
+            }
+            this.currentMessageContent += chunk;
+
+            const contentEl = document.getElementById('spContent');
+            if (contentEl) {
+                // Show plain text while streaming for performance
+                contentEl.textContent = this.currentMessageContent;
+                contentEl.scrollTop = contentEl.scrollHeight;
+            }
+            return;
+        }
+
         if (this.currentMessageId !== messageId) {
             // New message from assistant
             this.currentMessageId = messageId;
@@ -288,6 +380,28 @@ class ChatApp {
 
     handleMessageComplete(messageId) {
         this.hideTypingIndicator();
+
+        if (this.uiMode === 'singlepage') {
+            const contentEl = document.getElementById('spContent');
+            if (contentEl) {
+                contentEl.innerHTML = marked.parse(this.currentMessageContent);
+                contentEl.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+                contentEl.scrollTop = 0;
+            }
+
+            // Add this page to history
+            const title = this.spCurrentPrompt.length > 40
+                ? this.spCurrentPrompt.substring(0, 40) + '…'
+                : this.spCurrentPrompt;
+            this.addToSpHistory(this.spCurrentPrompt, this.currentMessageContent, title);
+            this.updateSpBreadcrumb();
+
+            this.currentMessageId = null;
+            this.currentMessageContent = '';
+            return;
+        }
 
         // Final render with full markdown
         const contentEl = document.querySelector(`[data-message-id="${messageId}"] .message-body`);
@@ -733,6 +847,245 @@ class ChatApp {
     scrollToBottom() {
         const messageList = document.getElementById('messageList');
         messageList.scrollTop = messageList.scrollHeight;
+    }
+
+    // ----------------------------------------------------------------
+    // Single Page Mode
+    // ----------------------------------------------------------------
+
+    switchUiMode(mode) {
+        this.uiMode = mode;
+        const messageList = document.getElementById('messageList');
+        const spContainer = document.getElementById('spContainer');
+
+        if (mode === 'singlepage') {
+            messageList.classList.add('hidden');
+            spContainer.classList.remove('hidden');
+            document.getElementById('messageInput').placeholder =
+                'Type a prompt… (Enter to send, Shift+Enter for new line)';
+        } else {
+            messageList.classList.remove('hidden');
+            spContainer.classList.add('hidden');
+            document.getElementById('messageInput').placeholder =
+                'Type a message… (Enter to send, Shift+Enter for new line)';
+            this.hideSpContextMenu();
+            this.hideInlinePrompt();
+        }
+    }
+
+    // Navigation history ------------------------------------------
+
+    addToSpHistory(prompt, content, title) {
+        // Discard any forward history when a new page is generated
+        if (this.spCurrentIndex < this.spHistory.length - 1) {
+            this.spHistory = this.spHistory.slice(0, this.spCurrentIndex + 1);
+        }
+        this.spHistory.push({ prompt, content, title });
+        this.spCurrentIndex = this.spHistory.length - 1;
+        this.updateSpNavButtons();
+    }
+
+    navigateToSpPage(index) {
+        if (index < 0 || index >= this.spHistory.length) return;
+        this.spCurrentIndex = index;
+        const page = this.spHistory[index];
+
+        const contentEl = document.getElementById('spContent');
+        if (contentEl) {
+            contentEl.innerHTML = marked.parse(page.content);
+            contentEl.querySelectorAll('pre code').forEach((block) => hljs.highlightElement(block));
+            contentEl.scrollTop = 0;
+        }
+
+        this.updateSpBreadcrumb();
+        this.updateSpNavButtons();
+    }
+
+    navigateBack() {
+        if (this.spCurrentIndex > 0) {
+            this.navigateToSpPage(this.spCurrentIndex - 1);
+        }
+    }
+
+    navigateForward() {
+        if (this.spCurrentIndex < this.spHistory.length - 1) {
+            this.navigateToSpPage(this.spCurrentIndex + 1);
+        }
+    }
+
+    updateSpBreadcrumb() {
+        const breadcrumb = document.getElementById('spBreadcrumb');
+        if (!breadcrumb) return;
+
+        breadcrumb.innerHTML = this.spHistory.map((page, index) => {
+            const isActive = index === this.spCurrentIndex;
+            const label = this.escapeHtml(page.title);
+            const sep = index < this.spHistory.length - 1
+                ? '<span class="sp-breadcrumb-sep" aria-hidden="true">›</span>'
+                : '';
+
+            if (isActive) {
+                return `<span class="sp-breadcrumb-item sp-breadcrumb-current" aria-current="page" title="${this.escapeHtml(page.prompt)}">${label}</span>${sep}`;
+            }
+            return `<button class="sp-breadcrumb-item sp-breadcrumb-link" data-index="${index}" title="${this.escapeHtml(page.prompt)}">${label}</button>${sep}`;
+        }).join('');
+
+        breadcrumb.querySelectorAll('.sp-breadcrumb-link').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.navigateToSpPage(parseInt(btn.dataset.index, 10));
+            });
+        });
+    }
+
+    updateSpNavButtons() {
+        const backBtn = document.getElementById('spBackBtn');
+        const forwardBtn = document.getElementById('spForwardBtn');
+        if (backBtn) backBtn.disabled = this.spCurrentIndex <= 0;
+        if (forwardBtn) forwardBtn.disabled = this.spCurrentIndex >= this.spHistory.length - 1;
+    }
+
+    // Context menu on text selection --------------------------------
+
+    handleTextSelection(e) {
+        if (this.uiMode !== 'singlepage') return;
+
+        // Only process selection within sp-content
+        const selection = window.getSelection();
+        const text = selection ? selection.toString().trim() : '';
+
+        if (text.length === 0) {
+            this.hideSpContextMenu();
+            return;
+        }
+
+        this.spSelectedText = text;
+
+        // Position the menu near the end of the selection
+        try {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            this.showSpContextMenu(
+                Math.round(rect.left + rect.width / 2),
+                Math.round(rect.top)
+            );
+        } catch (_) {
+            // If we can't get rect just show at cursor position
+            this.showSpContextMenu(e.clientX || 0, e.clientY || 0);
+        }
+    }
+
+    showSpContextMenu(x, y) {
+        const menu = document.getElementById('spContextMenu');
+        if (!menu) return;
+        menu.classList.remove('hidden');
+
+        // Temporarily show so we can measure its size
+        menu.style.visibility = 'hidden';
+        menu.style.left = '0';
+        menu.style.top = '0';
+        menu.style.transform = 'none';
+
+        const menuW = menu.offsetWidth;
+        const menuH = menu.offsetHeight;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        // Prefer above the selection
+        let top = y - menuH - 8;
+        if (top < 4) top = y + 8;
+        if (top + menuH > vh - 4) top = vh - menuH - 4;
+
+        let left = x - menuW / 2;
+        if (left < 4) left = 4;
+        if (left + menuW > vw - 4) left = vw - menuW - 4;
+
+        menu.style.left = `${left}px`;
+        menu.style.top = `${top}px`;
+        menu.style.visibility = '';
+    }
+
+    hideSpContextMenu() {
+        const menu = document.getElementById('spContextMenu');
+        if (menu) menu.classList.add('hidden');
+    }
+
+    // "Prompt on selected" ----------------------------------------
+
+    promptOnSelected() {
+        this.hideSpContextMenu();
+        const previewEl = document.getElementById('spSelectedPreview');
+        if (previewEl) {
+            const preview = this.spSelectedText.length > 90
+                ? `"${this.spSelectedText.substring(0, 90)}…"`
+                : `"${this.spSelectedText}"`;
+            previewEl.textContent = preview;
+        }
+        const overlay = document.getElementById('spInlinePrompt');
+        if (overlay) {
+            overlay.classList.remove('hidden');
+            const input = document.getElementById('spInlineInput');
+            if (input) {
+                input.value = '';
+                input.focus();
+            }
+        }
+    }
+
+    hideInlinePrompt() {
+        const overlay = document.getElementById('spInlinePrompt');
+        if (overlay) overlay.classList.add('hidden');
+        const input = document.getElementById('spInlineInput');
+        if (input) input.value = '';
+    }
+
+    async submitInlinePrompt() {
+        const input = document.getElementById('spInlineInput');
+        const userQuestion = input ? input.value.trim() : '';
+        if (!userQuestion) return;
+
+        this.hideInlinePrompt();
+
+        const prompt = `Regarding this text: "${this.spSelectedText}" — ${userQuestion}`;
+        await this.sendSpPrompt(prompt);
+    }
+
+    // "More on this" ----------------------------------------------
+
+    async moreOnThis() {
+        this.hideSpContextMenu();
+        const prompt = `Tell me more about: "${this.spSelectedText}"`;
+        await this.sendSpPrompt(prompt);
+    }
+
+    // Send a sub-prompt in Single Page mode -----------------------
+
+    async sendSpPrompt(prompt) {
+        if (!this.isConnected) return;
+
+        this.spCurrentPrompt = prompt;
+
+        // Show loading state
+        const contentEl = document.getElementById('spContent');
+        if (contentEl) {
+            contentEl.innerHTML = '<div class="sp-loading"><span class="sp-loading-text">Generating response…</span></div>';
+        }
+
+        // Discard forward history if we are not at the end
+        if (this.spCurrentIndex < this.spHistory.length - 1) {
+            this.spHistory = this.spHistory.slice(0, this.spCurrentIndex + 1);
+        }
+
+        this.showTypingIndicator();
+
+        try {
+            await this.connection.invoke('SendMessage', this.sessionId, this.currentAgent, prompt, []);
+        } catch (error) {
+            console.error('Send SP prompt error:', error);
+            this.hideTypingIndicator();
+            if (contentEl) {
+                contentEl.innerHTML = `<p style="color:var(--error-color)">Failed to send: ${this.escapeHtml(error.message)}</p>`;
+            }
+        }
     }
 
     formatTime(date) {

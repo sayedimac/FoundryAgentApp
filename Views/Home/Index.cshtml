@@ -23,6 +23,14 @@
         </div>
 
         <div class="sidebar-footer">
+            <div class="ui-mode-selector">
+                <label for="uiModeSelect">View</label>
+                <select id="uiModeSelect" class="form-select">
+                    <option value="chat">Chat</option>
+                    <option value="singlepage">Single Page</option>
+                </select>
+            </div>
+
             <div class="agent-selector">
                 <label for="agentSelect">Agent</label>
                 <select id="agentSelect" class="form-select">
@@ -63,6 +71,30 @@
                 </button>
             </div>
         </header>
+
+        <!-- Single Page View -->
+        <div class="sp-container hidden" id="spContainer">
+            <div class="sp-nav">
+                <button class="sp-nav-btn sp-back-btn" id="spBackBtn" disabled title="Go back">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z" />
+                    </svg>
+                    Back
+                </button>
+                <button class="sp-nav-btn sp-forward-btn" id="spForwardBtn" disabled title="Go forward">
+                    Forward
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h11.793l-3.147-3.146a.5.5 0 0 1 .708-.708l4 4a.5.5 0 0 1 0 .708l-4 4a.5.5 0 0 1-.708-.708L13.293 8.5H1.5A.5.5 0 0 1 1 8z" />
+                    </svg>
+                </button>
+                <nav class="sp-breadcrumb" id="spBreadcrumb" aria-label="Page history"></nav>
+            </div>
+            <div class="sp-content" id="spContent">
+                <div class="sp-welcome">
+                    <p>Type a prompt below to generate a response. Select any text in the response to explore further.</p>
+                </div>
+            </div>
+        </div>
 
         <div class="message-list" id="messageList">
             <div class="welcome-message">
@@ -145,4 +177,32 @@
             </div>
         </div>
     </main>
+
+    <!-- Single Page Context Menu (positioned fixed) -->
+    <div class="sp-context-menu hidden" id="spContextMenu" role="menu" aria-label="Text actions">
+        <button class="sp-context-item" id="spPromptOnSelected" role="menuitem">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5z"/>
+            </svg>
+            Prompt on selected
+        </button>
+        <button class="sp-context-item" id="spMoreOnThis" role="menuitem">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h11.793l-3.147-3.146a.5.5 0 0 1 .708-.708l4 4a.5.5 0 0 1 0 .708l-4 4a.5.5 0 0 1-.708-.708L13.293 8.5H1.5A.5.5 0 0 1 1 8z"/>
+            </svg>
+            More on this
+        </button>
+    </div>
+
+    <!-- Single Page Inline Prompt Overlay -->
+    <div class="sp-inline-prompt hidden" id="spInlinePrompt" role="dialog" aria-label="Prompt about selected text">
+        <div class="sp-inline-prompt-header">
+            <span class="sp-selected-preview" id="spSelectedPreview"></span>
+            <button type="button" class="sp-inline-cancel" id="spInlineCancel" aria-label="Cancel">×</button>
+        </div>
+        <div class="sp-inline-prompt-body">
+            <textarea id="spInlineInput" placeholder="Ask about the selected text... (Enter to send)" rows="2"></textarea>
+            <button type="button" id="spInlineSubmit">Send</button>
+        </div>
+    </div>
 </div>
