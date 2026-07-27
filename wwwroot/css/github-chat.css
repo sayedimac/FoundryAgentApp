@@ -825,3 +825,46 @@ html, body {
 [data-theme="dark"] .btn-github-auth:hover {
     background-color: #d0d7de;
 }
+
+/* Suggested Prompts */
+.suggested-prompts {
+    margin-top: 24px;
+    text-align: center;
+}
+
+.suggested-prompts-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.suggested-prompts-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.suggested-prompt-btn {
+    display: inline-block;
+    padding: 10px 16px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+    text-align: left;
+    max-width: 280px;
+    line-height: 1.4;
+}
+
+.suggested-prompt-btn:hover {
+    background: var(--accent-color);
+    color: #fff;
+    border-color: var(--accent-color);
+}

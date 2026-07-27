@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Playwright run settings.
+  Run tests HEADED (graphical browser) by default so you can watch them.
+  To run headless (e.g. in CI), set the HEADED env var to 0.
+  Or override via CLI: dotnet test Playwright.LaunchOptions.Headless=true
+-->
+<RunSettings>
+  <Playwright>
+    <BrowserName>chromium</BrowserName>
+    <LaunchOptions>
+      <Headless>false</Headless>
+      <SlowMo>300</SlowMo>
+    </LaunchOptions>
+  </Playwright>
+</RunSettings>

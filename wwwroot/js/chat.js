@@ -15,6 +15,23 @@ class ChatApp {
 
         this.githubUsername = null;
         this.gitHubMcpBusyCount = 0;
+        this.agents = [];
+
+        // Per-agent suggested prompts (UI-only, not from server config)
+        this.suggestedPrompts = {
+            Code: [
+                'Search for open issues in my repository',
+                'Review this code snippet for potential bugs',
+                'Explain how async/await works in C#',
+                'Find recent pull requests in my project'
+            ],
+            Travel: [
+                'Plan a 7-day trip to Tokyo, Japan',
+                'What are the best beaches in Thailand?',
+                'Create a weekend getaway itinerary for Paris',
+                'What should I pack for a trip to Iceland in winter?'
+            ]
+        };
 
         this.init();
     }
@@ -398,6 +415,10 @@ class ChatApp {
     async selectAgent(agentName) {
         this.currentAgent = agentName;
 
+        // Clear the chat UI and start fresh for the new agent
+        this.clearMessageList();
+        this.showWelcomeMessage();
+
         this.updateGitHubMcpVisibility();
 
         if (agentName === 'Code') {
@@ -406,6 +427,9 @@ class ChatApp {
                 this.setGitHubMcpStatus('disconnected');
             }
         }
+
+        // Create a new session for the new agent so history stays separate
+        await this.createSession();
 
         // When selecting the Code agent, check whether GitHub auth is available.
         // Don't block selection; GitHub MCP tools will simply be unavailable until connected.
@@ -516,6 +540,31 @@ class ChatApp {
         document.getElementById('agentDescription').textContent = agentInfo.description || '';
     }
 
+    renderSuggestedPrompts(agentName) {
+        const container = document.getElementById('suggestedPromptsList');
+        if (!container) return;
+
+        const prompts = this.suggestedPrompts[agentName] || [];
+
+        if (prompts.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = prompts.map(p =>
+            `<button type="button" class="suggested-prompt-btn" title="${this.escapeHtml(p)}">${this.escapeHtml(p)}</button>`
+        ).join('');
+
+        container.querySelectorAll('.suggested-prompt-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const input = document.getElementById('messageInput');
+                input.value = btn.textContent;
+                input.focus();
+                this.sendMessage();
+            });
+        });
+    }
+
     async createSession() {
         try {
             await this.connection.invoke('CreateSession');
@@ -574,8 +623,14 @@ class ChatApp {
                         <span>Markdown Support</span>
                     </div>
                 </div>
+
+                <div class="suggested-prompts" id="suggestedPrompts">
+                    <h3 class="suggested-prompts-title">Try asking...</h3>
+                    <div class="suggested-prompts-list" id="suggestedPromptsList"></div>
+                </div>
             </div>
         `;
+        this.renderSuggestedPrompts(this.currentAgent);
     }
 
     hideWelcomeMessage() {
@@ -588,6 +643,7 @@ class ChatApp {
     async loadAgents() {
         try {
             const agents = await this.connection.invoke('GetAvailableAgents');
+            this.agents = agents;
             const select = document.getElementById('agentSelect');
             select.innerHTML = agents.map(a =>
                 `<option value="${a.name}">${a.name} - ${a.description}</option>`

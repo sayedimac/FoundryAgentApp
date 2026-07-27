@@ -31,10 +31,10 @@ public class AgentService : IAgentService, IAsyncDisposable
         _configuration = configuration;
         _logger = logger;
 
-        var endpoint = GetStringConfig(configuration, "AZURE_PROJECT_ENDPOINT", "Azure:ProjectEndpoint");
+        var endpoint = configuration["AZURE_FOUNDRY_PROJECT_ENDPOINT"];
         if (string.IsNullOrEmpty(endpoint))
         {
-            _logger.LogWarning("Azure:ProjectEndpoint not configured. Agent features will be disabled.");
+            _logger.LogWarning("AZURE_FOUNDRY_PROJECT_ENDPOINT not configured. Agent features will be disabled.");
             return;
         }
 
@@ -71,11 +71,11 @@ public class AgentService : IAgentService, IAsyncDisposable
         {
             if (_initialized) return;
 
-            var deployment = GetStringConfig(_configuration, "AZURE_MODEL_DEPLOYMENT_NAME", "Azure:ModelDeploymentName")
-                ?? throw new InvalidOperationException("AZURE_MODEL_DEPLOYMENT_NAME (or Azure:ModelDeploymentName) is required");
+            var deployment = _configuration["AZURE_MODEL_DEPLOYMENT_NAME"]
+                ?? throw new InvalidOperationException("AZURE_MODEL_DEPLOYMENT_NAME is required");
 
             // Create Code Assistant (runtime-provisioned agent with GitHub MCP support)
-            _agents["Code"] = await CreateAgentAsync(deployment, "ChatCode", """
+            _agents["Code"] = await CreateAgentAsync(deployment, "github-agent", """
                 You are a helpful code assistant.
                 You help with programming questions, code review, debugging, and explaining code.
                 Format responses in Markdown.Use fenced code blocks with language identifiers.
@@ -91,23 +91,42 @@ public class AgentService : IAgentService, IAsyncDisposable
                 HasTools = true
             };
 
-            // Register the Foundry-hosted Travel Agent (already exists in the Foundry project).
-            var travelAgentName = GetStringConfig(_configuration, "AZURE_TRAVEL_AGENT_NAME", "Azure:TravelAgentName");
-            if (!string.IsNullOrWhiteSpace(travelAgentName))
+            // Register the Foundry-hosted Travel Agent (pre-deployed in Azure Foundry).
+            var travelEndpoint = _configuration["AZURE_FOUNDRY_TRAVEL_AGENT_ENDPOINT"];
+            if (!string.IsNullOrWhiteSpace(travelEndpoint))
             {
                 _agentInfos["Travel"] = new ChatAgentInfo
                 {
                     Name = "Travel",
                     Description = "Travel planning assistant (Foundry hosted)",
                     Avatar = "T",
-                    Capabilities = ["Trip planning", "Destination info", "Travel tips"],
+                    Capabilities = ["Trip planning", "Destination info", "Travel tips", "Itinerary building"],
                     HasTools = true
                 };
-                _logger.LogInformation("Registered Foundry-hosted Travel agent: {Name}", travelAgentName);
+                _logger.LogInformation("Registered Foundry-hosted Travel agent from endpoint");
             }
             else
             {
-                _logger.LogWarning("AZURE_TRAVEL_AGENT_NAME not configured. Travel agent will be unavailable.");
+                _logger.LogWarning("AZURE_FOUNDRY_TRAVEL_AGENT_ENDPOINT not configured. Travel agent will be unavailable.");
+            }
+
+            // Register the ContosoPay Customer Support Triage workflow agent (Foundry hosted).
+            var triageAgentName = _configuration["AZURE_FOUNDRY_TRIAGE_AGENT_NAME"];
+            if (!string.IsNullOrWhiteSpace(triageAgentName))
+            {
+                _agentInfos["Triage"] = new ChatAgentInfo
+                {
+                    Name = "Triage",
+                    Description = "ContosoPay customer support triage (Foundry workflow)",
+                    Avatar = "W",
+                    Capabilities = ["Customer triage", "Support routing", "Issue classification", "ContosoPay workflows"],
+                    HasTools = true
+                };
+                _logger.LogInformation("Registered Foundry workflow Triage agent: {AgentName}", triageAgentName);
+            }
+            else
+            {
+                _logger.LogWarning("AZURE_FOUNDRY_TRIAGE_AGENT_NAME not configured. Triage agent will be unavailable.");
             }
 
             _initialized = true;
@@ -131,16 +150,16 @@ public class AgentService : IAgentService, IAsyncDisposable
 
         if (_projectClient == null)
         {
-            yield return new TextDeltaUpdate("Agent service is not configured. Please set Azure:ProjectEndpoint in configuration.");
+            yield return new TextDeltaUpdate("Agent service is not configured. Please set AZURE_FOUNDRY_PROJECT_ENDPOINT in configuration.");
             yield break;
         }
 
         // --- Code agent: optionally attaches GitHub MCP tool per request when the user is authenticated ---
         if (agentName is "Code" or "GitHub")
         {
-            var deployment = GetStringConfig(_configuration, "AZURE_MODEL_DEPLOYMENT_NAME", "Azure:ModelDeploymentName")
-                ?? throw new InvalidOperationException("AZURE_MODEL_DEPLOYMENT_NAME (or Azure:ModelDeploymentName) is required");
-            var mcpUrl = GetStringConfig(_configuration, "GITHUB_MCP_SERVER_URL", "Azure:GitHubMcpServerUrl");
+            var deployment = _configuration["AZURE_MODEL_DEPLOYMENT_NAME"]
+                ?? throw new InvalidOperationException("AZURE_MODEL_DEPLOYMENT_NAME is required");
+            var mcpUrl = _configuration["GITHUB_MCP_SERVER_URL"];
 
             var requiresAuth = agentName == "GitHub";
             if (requiresAuth && string.IsNullOrEmpty(githubToken))
@@ -193,13 +212,15 @@ public class AgentService : IAgentService, IAsyncDisposable
         // --- Travel agent: uses the Foundry-hosted agent by name (not a runtime-created version) ---
         if (agentName == "Travel")
         {
-            var travelAgentName = GetStringConfig(_configuration, "AZURE_TRAVEL_AGENT_NAME", "Azure:TravelAgentName");
-            if (string.IsNullOrWhiteSpace(travelAgentName))
+            var travelEndpoint = _configuration["AZURE_FOUNDRY_TRAVEL_AGENT_ENDPOINT"];
+            if (string.IsNullOrWhiteSpace(travelEndpoint))
             {
-                yield return new TextDeltaUpdate("Travel agent is not configured. Set AZURE_TRAVEL_AGENT_NAME (or Azure:TravelAgentName) to the agent name in your Foundry project.");
+                yield return new TextDeltaUpdate("Travel agent is not configured. Set AZURE_FOUNDRY_TRAVEL_AGENT_ENDPOINT.");
     yield break;
             }
 
+// Extract agent name from the Foundry endpoint URL: .../applications/{name}/protocols/...
+var travelAgentName = ExtractAgentName(travelEndpoint);
 var responseClient = _projectClient.OpenAI.GetProjectResponsesClientForAgent(travelAgentName);
 
 var options = new CreateResponseOptions
@@ -222,6 +243,40 @@ await foreach (var update in responseClient.CreateResponseStreamingAsync(options
     }
 }
 yield break;
+        }
+
+        // --- Triage workflow agent: uses the Foundry-hosted ContosoPay workflow agent ---
+        if (agentName == "Triage")
+        {
+            var triageAgentName = _configuration["AZURE_FOUNDRY_TRIAGE_AGENT_NAME"];
+            if (string.IsNullOrWhiteSpace(triageAgentName))
+            {
+                yield return new TextDeltaUpdate("Triage agent is not configured. Set AZURE_FOUNDRY_TRIAGE_AGENT_NAME.");
+                yield break;
+            }
+
+            var triageResponseClient = _projectClient.OpenAI.GetProjectResponsesClientForAgent(triageAgentName);
+
+            var triageOptions = new CreateResponseOptions
+            {
+                StreamingEnabled = true
+            };
+            foreach (var msg in history.TakeLast(20))
+            {
+                triageOptions.InputItems.Add(msg.Role == "user"
+                    ? ResponseItem.CreateUserMessageItem(msg.Content)
+                    : ResponseItem.CreateAssistantMessageItem(msg.Content));
+            }
+            triageOptions.InputItems.Add(ResponseItem.CreateUserMessageItem(prompt));
+
+            await foreach (var update in triageResponseClient.CreateResponseStreamingAsync(triageOptions, cancellationToken))
+            {
+                if (update is StreamingResponseOutputTextDeltaUpdate textDelta)
+                {
+                    yield return new TextDeltaUpdate(textDelta.Delta);
+                }
+            }
+            yield break;
         }
 
         // --- Runtime-created agents (Code without MCP falls through here) ---
@@ -273,11 +328,11 @@ public Task<IEnumerable<ChatAgentInfo>> GetAvailableAgentsAsync()
 {
     if (_agentInfos.Count == 0)
     {
-        // Return default list if not initialized
         var defaults = new List<ChatAgentInfo>
             {
                 new ChatAgentInfo { Name = "Code", Description = "Coding + GitHub tools (MCP)", Avatar = "C", HasTools = true },
-                new ChatAgentInfo { Name = "Travel", Description = "Travel planning assistant (Foundry hosted)", Avatar = "T", HasTools = true }
+                new ChatAgentInfo { Name = "Travel", Description = "Travel planning assistant (Foundry hosted)", Avatar = "T", HasTools = true },
+                new ChatAgentInfo { Name = "Triage", Description = "ContosoPay customer support triage (Foundry workflow)", Avatar = "W", HasTools = true }
             };
 
         return Task.FromResult<IEnumerable<ChatAgentInfo>>(defaults);
@@ -299,6 +354,24 @@ private async Task<AgentVersion> CreateAgentAsync(string model, string name, str
 
     _logger.LogInformation("Created agent: {Name} v{Version}", result.Value.Name, result.Value.Version);
     return result.Value;
+}
+
+/// <summary>
+/// Extracts the agent name from a Foundry endpoint URL.
+/// Expected format: .../applications/{agentName}/protocols/...
+/// </summary>
+private static string ExtractAgentName(string endpointUrl)
+{
+    var uri = new Uri(endpointUrl);
+    var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+    for (int i = 0; i < segments.Length - 1; i++)
+    {
+        if (segments[i].Equals("applications", StringComparison.OrdinalIgnoreCase))
+            return segments[i + 1];
+    }
+    throw new InvalidOperationException(
+        $"Cannot extract agent name from endpoint URL: {endpointUrl}. " +
+        "Expected .../applications/{{agentName}}/protocols/...");
 }
 
 private async IAsyncEnumerable<AgentStreamUpdate> HandleMcpStreamingAsync(
@@ -358,8 +431,7 @@ private async IAsyncEnumerable<AgentStreamUpdate> HandleMcpStreamingAsync(
     }
 }
 
-private static string? GetStringConfig(IConfiguration configuration, string flatKey, string legacyKey)
-    => configuration[flatKey] ?? configuration[legacyKey];
+
 
 public async ValueTask DisposeAsync()
 {

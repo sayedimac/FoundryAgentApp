@@ -12,6 +12,14 @@
     <UseAppHost>false</UseAppHost>
   </PropertyGroup>
 
+  <!-- Exclude the Playwright test project subfolder from the web SDK auto-glob -->
+  <ItemGroup>
+    <Compile Remove="AgentApp.PlaywrightTests\**" />
+    <Content Remove="AgentApp.PlaywrightTests\**" />
+    <EmbeddedResource Remove="AgentApp.PlaywrightTests\**" />
+    <None Remove="AgentApp.PlaywrightTests\**" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Azure AI Foundry SDK -->
     <PackageReference Include="Azure.AI.Projects" Version="1.2.0-beta.5" />
