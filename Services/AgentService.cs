@@ -246,6 +246,9 @@ yield break;
         }
 
         // --- Triage workflow agent: uses the Foundry-hosted ContosoPay workflow agent ---
+        // Workflow agents use the ActivityProtocol and do NOT support the "conversation"
+        // field that the Responses API attaches when streaming or conversation state is
+        // requested. Use non-streaming + StoredOutputEnabled=false to avoid that field.
         if (agentName == "Triage")
         {
             var triageAgentName = _configuration["AZURE_FOUNDRY_TRIAGE_AGENT_NAME"];
@@ -257,25 +260,18 @@ yield break;
 
             var triageResponseClient = _projectClient.OpenAI.GetProjectResponsesClientForAgent(triageAgentName);
 
+            // Workflow agents are single-turn: include only the current user prompt.
+            // Passing full history via InputItems causes "conversation" payload errors.
             var triageOptions = new CreateResponseOptions
             {
-                StreamingEnabled = true
+                StoredOutputEnabled = false
             };
-            foreach (var msg in history.TakeLast(20))
-            {
-                triageOptions.InputItems.Add(msg.Role == "user"
-                    ? ResponseItem.CreateUserMessageItem(msg.Content)
-                    : ResponseItem.CreateAssistantMessageItem(msg.Content));
-            }
             triageOptions.InputItems.Add(ResponseItem.CreateUserMessageItem(prompt));
 
-            await foreach (var update in triageResponseClient.CreateResponseStreamingAsync(triageOptions, cancellationToken))
-            {
-                if (update is StreamingResponseOutputTextDeltaUpdate textDelta)
-                {
-                    yield return new TextDeltaUpdate(textDelta.Delta);
-                }
-            }
+            var triageResponse = await triageResponseClient.CreateResponseAsync(triageOptions, cancellationToken);
+            var triageText = triageResponse.Value.GetOutputText();
+            if (!string.IsNullOrEmpty(triageText))
+                yield return new TextDeltaUpdate(triageText);
             yield break;
         }
 
