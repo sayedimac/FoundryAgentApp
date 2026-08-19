@@ -20,6 +20,14 @@
     <None Remove="AgentApp.PlaywrightTests\**" />
   </ItemGroup>
 
+  <!-- Exclude the standalone Azure Functions project subfolder from the web SDK auto-glob -->
+  <ItemGroup>
+    <Compile Remove="WeatherFunctionApp\**" />
+    <Content Remove="WeatherFunctionApp\**" />
+    <EmbeddedResource Remove="WeatherFunctionApp\**" />
+    <None Remove="WeatherFunctionApp\**" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- Azure AI Foundry SDK -->
     <PackageReference Include="Azure.AI.Projects" Version="1.2.0-beta.5" />

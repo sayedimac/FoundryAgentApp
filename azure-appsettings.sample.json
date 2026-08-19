@@ -1,0 +1,30 @@
+{
+  "//": "Copy the values below into your Azure App Service > Configuration > Application settings.",
+  "//1": "Never commit real values for these settings to source control.",
+
+  "AZURE_FOUNDRY_PROJECT_ENDPOINT": "https://<your-foundry-resource>.services.ai.azure.com/api/projects/<your-project>",
+  "AZURE_FOUNDRY_TRAVEL_AGENT_ENDPOINT": "",
+  "AZURE_FOUNDRY_TRIAGE_AGENT_NAME": "",
+  "AZURE_FOUNDRY_HUMAN_AGENT_NAME": "",
+  "AZURE_MODEL_DEPLOYMENT_NAME": "gpt-4.1",
+
+  "GITHUB_APP_CLIENT_ID": "",
+  "GITHUB_APP_CLIENT_SECRET": "",
+  "GITHUB_MCP_SERVER_URL": "https://api.githubcopilot.com/mcp",
+
+  "WEATHER_FUNCTION_APP_URL": "https://<your-function-app>.azurewebsites.net/api/GetWeather",
+  "WEATHER_FUNCTION_APP_KEY": "",
+
+  "AZURE_CLIENT_ID": "",
+
+  "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=<key>;IngestionEndpoint=https://<region>.in.applicationinsights.azure.com/;LiveEndpoint=https://<region>.livediagnostics.monitor.azure.com/;ApplicationId=<app-id>",
+  "ApplicationInsightsAgent_EXTENSION_VERSION": "~3",
+  "XDT_MicrosoftApplicationInsights_Mode": "recommended",
+  "InstrumentationEngine_EXTENSION_VERSION": "disabled",
+  "DiagnosticServices_EXTENSION_VERSION": "disabled",
+  "SnapshotDebugger_EXTENSION_VERSION": "disabled",
+  "XDT_MicrosoftApplicationInsights_BaseExtensions": "disabled",
+
+  "WEBSITE_RUN_FROM_PACKAGE": "1",
+  "ASPNETCORE_ENVIRONMENT": "Production"
+}
