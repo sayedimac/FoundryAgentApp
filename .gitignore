@@ -184,8 +184,13 @@ DocProject/Help/*.hhp
 DocProject/Help/Html2
 DocProject/Help/html
 
+# Azure Functions local settings (may contain secrets)
+local.settings.json
+
 # Click-Once directory
 publish/
+publish-test/
+publish-*/
 
 # Publish Web Output
 *.[Pp]ublish.xml

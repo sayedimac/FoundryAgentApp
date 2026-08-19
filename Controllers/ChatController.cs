@@ -17,12 +17,6 @@ public class ChatController : Controller
         _environment = environment;
     }
 
-    public async Task<IActionResult> Index()
-    {
-        // Chat is now the default Home/Index page.
-        return RedirectToAction(actionName: "Index", controllerName: "Home");
-    }
-
     [HttpPost]
     [Route("api/upload")]
     public async Task<IActionResult> UploadFile(IFormFile file)
