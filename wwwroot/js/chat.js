@@ -30,6 +30,12 @@ class ChatApp {
                 'What are the best beaches in Thailand?',
                 'Create a weekend getaway itinerary for Paris',
                 'What should I pack for a trip to Iceland in winter?'
+            ],
+            'Shipping Agent': [
+                'What shipping issues are most similar to a delayed delivery?',
+                'How should I resolve a damaged package report?',
+                'Find relevant guidance for a missing shipment',
+                'Summarize the best next steps for a delivery exception'
             ]
         };
 

@@ -8,6 +8,15 @@
   "AZURE_FOUNDRY_HUMAN_AGENT_NAME": "",
   "AZURE_MODEL_DEPLOYMENT_NAME": "gpt-4.1",
 
+  "AZURE_OPENAI_ENDPOINT": "https://<your-openai-resource>.openai.azure.com",
+  "AZURE_OPENAI_API_KEY": "",
+  "AZURE_OPENAI_CHAT_DEPLOYMENT_NAME": "gpt-4.1",
+  "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME": "text-embedding-3-small",
+  "AZURE_COSMOS_DB_ENDPOINT": "https://<your-cosmos-account>.documents.azure.com:443/",
+  "AZURE_COSMOS_DB_KEY": "",
+  "AZURE_COSMOS_DB_DATABASE_NAME": "<your-database>",
+  "AZURE_COSMOS_DB_CONTAINER_NAME": "<your-container>",
+
   "GITHUB_APP_CLIENT_ID": "",
   "GITHUB_APP_CLIENT_SECRET": "",
   "GITHUB_MCP_SERVER_URL": "https://api.githubcopilot.com/mcp",

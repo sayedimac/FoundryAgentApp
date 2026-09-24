@@ -43,9 +43,10 @@ public class SidebarTests : PlaywrightTestBase
         await Expect(select).ToBeVisibleAsync();
 
         var options = select.Locator("option");
-        await Expect(options).ToHaveCountAsync(2);
-        await Expect(options.Nth(0)).ToHaveTextAsync("Code - Programming + GitHub tools");
-        await Expect(options.Nth(1)).ToHaveTextAsync("Travel - Travel planning assistant");
+        await Expect(options).ToHaveCountAsync(3);
+        await Expect(select.Locator("option[value='Code']")).ToContainTextAsync("Code");
+        await Expect(select.Locator("option[value='Weather']")).ToContainTextAsync("Weather");
+        await Expect(select.Locator("option[value='Shipping Agent']")).ToContainTextAsync("Shipping Agent");
     }
 
     [Test]

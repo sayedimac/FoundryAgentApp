@@ -31,6 +31,7 @@ builder.Services.AddHttpClient();
 
 // Register agent and conversation services
 builder.Services.AddSingleton<IAgentService, AgentService>();
+builder.Services.AddSingleton<IShippingAgentService, ShippingAgentService>();
 builder.Services.AddSingleton<IConversationService, ConversationService>();
 
 var app = builder.Build();

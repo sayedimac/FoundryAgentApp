@@ -38,6 +38,7 @@ public class AgentService : IAgentService, IAsyncDisposable
     private readonly IConfiguration _configuration;
     private readonly ILogger<AgentService> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IShippingAgentService _shippingAgentService;
 
     private readonly Dictionary<string, AgentVersion> _selfRegisteredAgents = new();
     private readonly Dictionary<string, ChatAgentInfo> _agentInfos = new();
@@ -48,11 +49,13 @@ public class AgentService : IAgentService, IAsyncDisposable
     public AgentService(
         IConfiguration configuration,
         ILogger<AgentService> logger,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        IShippingAgentService shippingAgentService)
     {
         _configuration = configuration;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
+        _shippingAgentService = shippingAgentService;
 
         var endpoint = configuration["AZURE_FOUNDRY_PROJECT_ENDPOINT"];
         if (string.IsNullOrEmpty(endpoint))
@@ -84,7 +87,7 @@ public class AgentService : IAgentService, IAsyncDisposable
 
     public async Task InitializeAsync()
     {
-        if (_initialized || _projectClient == null) return;
+        if (_initialized) return;
 
         await _initLock.WaitAsync();
         try
@@ -111,9 +114,21 @@ public class AgentService : IAgentService, IAsyncDisposable
                 HasTools = true
             };
 
+            _agentInfos["Shipping Agent"] = new ChatAgentInfo
+            {
+                Name = "Shipping Agent",
+                Description = "Shipping answers grounded by Cosmos DB semantic search",
+                Avatar = "S",
+                Capabilities = ["Semantic search", "Shipping knowledge", "Grounded answers"],
+                HasTools = false
+            };
+
             RegisterTravelAgent();
             RegisterWorkflowAgents();
-            await DiscoverFoundryAgentsAsync();
+            if (_projectClient is not null)
+            {
+                await DiscoverFoundryAgentsAsync();
+            }
 
             _initialized = true;
             _logger.LogInformation("Initialized agents: {Agents}", string.Join(", ", _agentInfos.Keys));
@@ -209,6 +224,13 @@ public class AgentService : IAgentService, IAsyncDisposable
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await InitializeAsync();
+
+        if (agentName == "Shipping Agent")
+        {
+            var response = await _shippingAgentService.GetResponseAsync(prompt, history, cancellationToken);
+            yield return new TextDeltaUpdate(response);
+            yield break;
+        }
 
         if (_projectClient == null)
         {
@@ -591,7 +613,8 @@ public class AgentService : IAgentService, IAsyncDisposable
             return new List<ChatAgentInfo>
             {
                 new() { Name = "Code", Description = "Coding + GitHub tools (MCP)", Avatar = "C", HasTools = true },
-                new() { Name = "Weather", Description = "Weather forecasts via Azure Function (OpenWeatherMap)", Avatar = "W", HasTools = true }
+                new() { Name = "Weather", Description = "Weather forecasts via Azure Function (OpenWeatherMap)", Avatar = "W", HasTools = true },
+                new() { Name = "Shipping Agent", Description = "Shipping answers grounded by Cosmos DB semantic search", Avatar = "S" }
             };
         }
 

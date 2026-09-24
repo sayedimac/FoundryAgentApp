@@ -400,6 +400,9 @@ FodyWeavers.xsd
 # Local History for Visual Studio Code
 .history/
 
+# Local CodeQL databases
+.codeql-db/
+
 # Windows Installer files from build outputs
 *.cab
 *.msi
