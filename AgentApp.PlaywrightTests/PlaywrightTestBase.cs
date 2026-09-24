@@ -51,7 +51,7 @@ public class PlaywrightTestBase : PageTest
         }
 
         var projectPath = Path.GetFullPath(
-            Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "AgentApp.csproj"));
+            Path.Combine(TestContext.CurrentContext.TestDirectory, "..", "..", "..", "..", "src", "AgentApp.csproj"));
 
         _serverProcess = new Process
         {
