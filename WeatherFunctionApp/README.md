@@ -45,3 +45,13 @@ func start
 ```
 
 (requires the [Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local))
+
+## Deployment
+
+This function app is deployed by the
+[`main_weatherfunctionapp.yml`](../.github/workflows/main_weatherfunctionapp.yml)
+GitHub Actions workflow whenever changes are pushed to `main` under
+`WeatherFunctionApp/`. It authenticates to Azure using the same
+federated/managed identity (client ID, tenant ID and subscription ID secrets)
+as the main web app's deployment workflow, and deploys to the
+`weatherfunctionapp` Azure Function App.
