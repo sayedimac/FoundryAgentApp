@@ -35,6 +35,7 @@ public class AgentService : IAgentService, IAsyncDisposable
         };
 
     private readonly AIProjectClient? _projectClient;
+    private readonly TokenCredential? _credential;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AgentService> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -64,7 +65,8 @@ public class AgentService : IAgentService, IAsyncDisposable
             return;
         }
 
-        _projectClient = new AIProjectClient(new Uri(endpoint), CreateCredential());
+        _credential = CreateCredential();
+        _projectClient = new AIProjectClient(new Uri(endpoint), _credential);
         _logger.LogInformation("AIProjectClient created for endpoint {Endpoint}", endpoint);
     }
 
@@ -272,7 +274,11 @@ public class AgentService : IAgentService, IAsyncDisposable
                 yield break;
             }
 
-            await foreach (var update in HandleWorkflowAgentAsync(configuredName, prompt, cancellationToken))
+            var updates = agentName == "Triage"
+                ? HandleMafAgentAsync(configuredName, prompt, cancellationToken)
+                : HandleWorkflowAgentAsync(configuredName, prompt, cancellationToken);
+
+            await foreach (var update in updates)
             {
                 yield return update;
             }
@@ -478,6 +484,92 @@ public class AgentService : IAgentService, IAsyncDisposable
         }
     }
 
+    // MAF-hosted agents reject the conversation field added by the SDK, so call their Responses endpoint directly.
+    private async IAsyncEnumerable<AgentStreamUpdate> HandleMafAgentAsync(
+        string foundryAgentName,
+        string prompt,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var projectEndpoint = _configuration["AZURE_FOUNDRY_PROJECT_ENDPOINT"]!.TrimEnd('/');
+        var agentUrl = $"{projectEndpoint}/agents/{foundryAgentName}/endpoint/protocols/openai/responses";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, agentUrl);
+        request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+        var apiKey = _configuration["AZURE_API_KEY"];
+        if (!string.IsNullOrWhiteSpace(apiKey))
+        {
+            request.Headers.Add("api-key", apiKey);
+        }
+        else
+        {
+            var token = await _credential!.GetTokenAsync(
+                new TokenRequestContext(["https://cognitiveservices.azure.com/.default"]),
+                cancellationToken);
+            request.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
+        }
+
+        request.Content = JsonContent.Create(new { input = prompt });
+        using var response = await _httpClientFactory.CreateClient().SendAsync(request, cancellationToken);
+        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogError(
+                "MAF agent {AgentName} call failed with status {Status}: {Body}",
+                foundryAgentName,
+                response.StatusCode,
+                responseContent);
+            yield return new TextDeltaUpdate($"Triage API error ({response.StatusCode}): {responseContent}");
+            yield break;
+        }
+
+        using var document = JsonDocument.Parse(responseContent);
+        var outputText = ExtractResponseText(document.RootElement);
+        yield return new TextDeltaUpdate(
+            string.IsNullOrEmpty(outputText) ? responseContent : outputText);
+    }
+
+    private static string ExtractResponseText(JsonElement root)
+    {
+        if (!root.TryGetProperty("output", out var output))
+        {
+            return string.Empty;
+        }
+
+        if (output.ValueKind == JsonValueKind.String)
+        {
+            return output.GetString() ?? string.Empty;
+        }
+
+        if (output.ValueKind != JsonValueKind.Array)
+        {
+            return string.Empty;
+        }
+
+        var text = new System.Text.StringBuilder();
+        foreach (var item in output.EnumerateArray())
+        {
+            if (item.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var contentItem in content.EnumerateArray())
+                {
+                    if (contentItem.TryGetProperty("text", out var contentText))
+                    {
+                        text.Append(contentText.GetString());
+                    }
+                }
+            }
+            else if (item.TryGetProperty("text", out var directText))
+            {
+                text.Append(directText.GetString());
+            }
+        }
+
+        return text.ToString();
+    }
+
     private async Task<AgentVersion> GetOrCreateSelfRegisteredAgentAsync(string key, string model, string instructions)
     {
         if (_selfRegisteredAgents.TryGetValue(key, out var existing))
@@ -514,7 +606,7 @@ public class AgentService : IAgentService, IAsyncDisposable
 
     /// <summary>
     /// Extracts the agent name from a Foundry endpoint URL.
-    /// Expected format: .../applications/{agentName}/protocols/...
+    /// Expected format: .../applications/{agentName}/protocols/... or .../agents/{agentName}/...
     /// </summary>
     private static string ExtractAgentName(string endpointUrl)
     {
@@ -522,12 +614,13 @@ public class AgentService : IAgentService, IAsyncDisposable
         var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
         for (int i = 0; i < segments.Length - 1; i++)
         {
-            if (segments[i].Equals("applications", StringComparison.OrdinalIgnoreCase))
+            if (segments[i].Equals("applications", StringComparison.OrdinalIgnoreCase) ||
+                segments[i].Equals("agents", StringComparison.OrdinalIgnoreCase))
                 return segments[i + 1];
         }
         throw new InvalidOperationException(
             $"Cannot extract agent name from endpoint URL: {endpointUrl}. " +
-            "Expected .../applications/{{agentName}}/protocols/...");
+            "Expected .../applications/{{agentName}}/protocols/... or .../agents/{{agentName}}/...");
     }
 
     private async IAsyncEnumerable<AgentStreamUpdate> HandleMcpStreamingAsync(

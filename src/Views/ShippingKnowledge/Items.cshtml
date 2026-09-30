@@ -1,0 +1,67 @@
+@using System.Globalization
+@model ShippingKnowledgePage
+@{
+    ViewData["Title"] = "Stored items";
+    Layout = "_KnowledgeLayout";
+}
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">Cosmos DB vector store</span>
+        <h1>Stored knowledge items</h1>
+        <p>Review the source text, metadata, and 256-dimensional embedding saved in the container.</p>
+    </div>
+    <a class="button primary" asp-action="Add">Add item</a>
+</div>
+
+@if (TempData["KnowledgeSuccess"] is string successMessage)
+{
+    <div class="success-message" role="status">@successMessage</div>
+}
+
+@if (Model.Items.Count == 0)
+{
+    <div class="empty-state">
+        <h2>No items found</h2>
+        <p>Add the first knowledge item to generate and persist an embedding.</p>
+    </div>
+}
+else
+{
+    <div class="knowledge-list">
+        @foreach (var item in Model.Items)
+        {
+            <article class="knowledge-card">
+                <div class="card-heading">
+                    <div>
+                        <span class="category">@item.Category</span>
+                        <h2>@item.Id</h2>
+                    </div>
+                    <span class="dimension">@item.Embedding.Count dimensions</span>
+                </div>
+
+                <p class="content">@item.Content</p>
+
+                <dl class="metadata">
+                    <div><dt>Document ID</dt><dd>@(string.IsNullOrWhiteSpace(item.DocumentId) ? "Legacy item (not set)" : item.DocumentId)</dd></div>
+                    <div><dt>Source</dt><dd>@item.Source</dd></div>
+                    <div><dt>Chunk</dt><dd>@item.ChunkIndex</dd></div>
+                    <div><dt>Created</dt><dd>@(item.CreatedAt?.ToString("u") ?? "Legacy item (not set)")</dd></div>
+                    <div><dt>Tags</dt><dd>@(item.Tags.Count == 0 ? "None" : string.Join(", ", item.Tags))</dd></div>
+                </dl>
+
+                <details>
+                    <summary>Show embedding</summary>
+                    <pre class="embedding">@string.Join(", ", item.Embedding.Select(value => value.ToString("0.000000", CultureInfo.InvariantCulture)))</pre>
+                </details>
+            </article>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.ContinuationToken))
+{
+    <div class="pagination">
+        <a class="button secondary" asp-action="Items" asp-route-continuationToken="@Model.ContinuationToken">Next page</a>
+    </div>
+}

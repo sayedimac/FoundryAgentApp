@@ -1,0 +1,47 @@
+@model CreateShippingKnowledgeViewModel
+@{
+    ViewData["Title"] = "Add item";
+    Layout = "_KnowledgeLayout";
+}
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">Cosmos DB vector store</span>
+        <h1>Add knowledge item</h1>
+        <p>The text is embedded with the configured <code>AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME</code> deployment and saved with its metadata.</p>
+    </div>
+    <a class="button secondary" asp-action="Items">View stored items</a>
+</div>
+
+<form class="knowledge-form" asp-action="Add" method="post">
+    <div asp-validation-summary="ModelOnly" class="validation-summary"></div>
+
+    <label asp-for="Content"></label>
+    <textarea asp-for="Content" rows="10" placeholder="Enter the shipping knowledge text to embed"></textarea>
+    <span asp-validation-for="Content" class="field-validation"></span>
+
+    <div class="field-grid">
+        <div>
+            <label asp-for="DocumentId"></label>
+            <input asp-for="DocumentId" placeholder="Generated automatically when blank" />
+            <span asp-validation-for="DocumentId" class="field-validation"></span>
+        </div>
+        <div>
+            <label asp-for="Source"></label>
+            <input asp-for="Source" />
+            <span asp-validation-for="Source" class="field-validation"></span>
+        </div>
+        <div>
+            <label asp-for="Category"></label>
+            <input asp-for="Category" />
+            <span asp-validation-for="Category" class="field-validation"></span>
+        </div>
+        <div>
+            <label asp-for="TagsText"></label>
+            <input asp-for="TagsText" placeholder="shipping, delivery, tracking" />
+            <span class="field-hint">Comma-separated, up to 20 tags.</span>
+        </div>
+    </div>
+
+    <button class="button primary" type="submit">Create embedding and save</button>
+</form>

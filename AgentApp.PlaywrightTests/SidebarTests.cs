@@ -57,4 +57,13 @@ public class SidebarTests : PlaywrightTestBase
         var select = Page.Locator("#agentSelect");
         await Expect(select).ToHaveValueAsync("Code");
     }
+
+    [Test]
+    public async Task Sidebar_DoesNotShowAlternateViewSelector()
+    {
+        await Page.GotoAsync(BaseUrl);
+
+        await Expect(Page.Locator("#uiModeSelect")).ToHaveCountAsync(0);
+        await Expect(Page.Locator("#spContainer")).ToHaveCountAsync(0);
+    }
 }

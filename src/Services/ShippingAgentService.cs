@@ -6,6 +6,7 @@ using Azure;
 using Azure.Core;
 using Azure.Identity;
 using Microsoft.Azure.Cosmos;
+using Newtonsoft.Json;
 using WebApp.Models;
 
 namespace WebApp.Services;
@@ -74,6 +75,83 @@ public sealed class ShippingAgentService : IShippingAgentService, IDisposable
         return await GetChatCompletionAsync(groundedPrompt, history, prompt, cancellationToken);
     }
 
+    public async Task<ShippingKnowledgeItem> CreateKnowledgeItemAsync(
+        CreateShippingKnowledgeItem request,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateKnowledgeConfiguration();
+
+        var documentId = string.IsNullOrWhiteSpace(request.DocumentId)
+            ? Guid.NewGuid().ToString()
+            : request.DocumentId.Trim();
+        var content = request.Content.Trim();
+        var document = new ShippingKnowledgeDocument
+        {
+            Id = Guid.NewGuid().ToString(),
+            DocumentId = documentId,
+            Content = content,
+            Metadata = new ShippingKnowledgeMetadata
+            {
+                Source = request.Source.Trim(),
+                Category = request.Category.Trim(),
+                Tags = request.Tags,
+                ChunkIndex = 0
+            },
+            Embedding = await CreateEmbeddingAsync(content, cancellationToken),
+            CreatedAt = DateTimeOffset.UtcNow,
+            SchemaVersion = 1
+        };
+
+        var response = await _container!.CreateItemAsync(
+            document,
+            new PartitionKey(document.DocumentId),
+            cancellationToken: cancellationToken);
+
+        _logger.LogInformation(
+            "Created shipping knowledge item {ItemId} in document {DocumentId} at a cost of {RequestCharge:F2} RUs.",
+            document.Id,
+            document.DocumentId,
+            response.RequestCharge);
+
+        return ToKnowledgeItem(response.Resource);
+    }
+
+    public async Task<ShippingKnowledgePage> GetKnowledgeItemsAsync(
+        string? continuationToken,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateCosmosConfiguration();
+
+        const string queryText = """
+            SELECT
+                c.id,
+                c.documentId,
+                c.content,
+                c.metadata,
+                c.embedding,
+                c.createdAt,
+                c.schemaVersion
+            FROM c
+            ORDER BY c._ts DESC
+            """;
+
+        using var iterator = _container!.GetItemQueryIterator<ShippingKnowledgeDocument>(
+            new QueryDefinition(queryText),
+            continuationToken,
+            new QueryRequestOptions { MaxItemCount = Math.Clamp(pageSize, 1, 50) });
+        var page = await iterator.ReadNextAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Listed {ItemCount} shipping knowledge items at a cost of {RequestCharge:F2} RUs.",
+            page.Count,
+            page.RequestCharge);
+
+        return new ShippingKnowledgePage(
+            page.Select(ToKnowledgeItem).ToArray(),
+            page.ContinuationToken);
+    }
+
     private void ValidateConfiguration()
     {
         var missingSettings = new List<string>();
@@ -96,6 +174,33 @@ public sealed class ShippingAgentService : IShippingAgentService, IDisposable
         {
             throw new InvalidOperationException(
                 $"Shipping Agent is not configured. Set: {string.Join(", ", missingSettings.Distinct())}.");
+        }
+    }
+
+    private void ValidateKnowledgeConfiguration()
+    {
+        ValidateCosmosConfiguration();
+
+        var missingSettings = new List<string>();
+        if (string.IsNullOrWhiteSpace(_configuration["AZURE_OPENAI_ENDPOINT"]))
+            missingSettings.Add("AZURE_OPENAI_ENDPOINT");
+        if (string.IsNullOrWhiteSpace(_configuration["AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"]))
+            missingSettings.Add("AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME");
+
+        if (missingSettings.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Shipping knowledge management is not configured. Set: {string.Join(", ", missingSettings)}.");
+        }
+    }
+
+    private void ValidateCosmosConfiguration()
+    {
+        if (_container is null)
+        {
+            throw new InvalidOperationException(
+                "Shipping knowledge management is not configured. Set: AZURE_COSMOS_DB_ENDPOINT, " +
+                "AZURE_COSMOS_DB_DATABASE_NAME, AZURE_COSMOS_DB_CONTAINER_NAME.");
         }
     }
 
@@ -200,8 +305,7 @@ public sealed class ShippingAgentService : IShippingAgentService, IDisposable
         var request = new
         {
             messages,
-            temperature = 0.2,
-            max_tokens = 800
+            max_completion_tokens = 2_000
         };
         var deployment = _configuration["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"]
             ?? _configuration["AZURE_MODEL_DEPLOYMENT_NAME"]!;
@@ -223,8 +327,13 @@ public sealed class ShippingAgentService : IShippingAgentService, IDisposable
             throw new InvalidOperationException("Azure OpenAI returned an invalid chat completion response.");
         }
 
-        return content.GetString()
-            ?? throw new InvalidOperationException("Azure OpenAI returned an empty chat completion.");
+        var responseContent = content.GetString();
+        if (string.IsNullOrWhiteSpace(responseContent))
+        {
+            throw new InvalidOperationException("Azure OpenAI returned an empty chat completion.");
+        }
+
+        return responseContent;
     }
 
     private async Task<HttpResponseMessage> SendAzureOpenAiRequestAsync(
@@ -298,6 +407,21 @@ public sealed class ShippingAgentService : IShippingAgentService, IDisposable
             """;
     }
 
+    private static ShippingKnowledgeItem ToKnowledgeItem(ShippingKnowledgeDocument document)
+    {
+        return new ShippingKnowledgeItem(
+            document.Id,
+            document.DocumentId,
+            document.Content,
+            document.Metadata.Source,
+            document.Metadata.Category,
+            document.Metadata.Tags,
+            document.Metadata.ChunkIndex,
+            document.Embedding,
+            document.CreatedAt,
+            document.SchemaVersion);
+    }
+
     private static TokenCredential CreateCredential()
     {
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID")))
@@ -327,5 +451,44 @@ public sealed class ShippingAgentService : IShippingAgentService, IDisposable
         public string Content { get; init; } = "";
         public JsonElement Metadata { get; init; }
         public double SimilarityScore { get; init; }
+    }
+
+    private sealed class ShippingKnowledgeDocument
+    {
+        [JsonProperty("id")]
+        public string Id { get; init; } = "";
+
+        [JsonProperty("documentId")]
+        public string DocumentId { get; init; } = "";
+
+        [JsonProperty("content")]
+        public string Content { get; init; } = "";
+
+        [JsonProperty("metadata")]
+        public ShippingKnowledgeMetadata Metadata { get; init; } = new();
+
+        [JsonProperty("embedding")]
+        public float[] Embedding { get; init; } = [];
+
+        [JsonProperty("createdAt")]
+        public DateTimeOffset? CreatedAt { get; init; }
+
+        [JsonProperty("schemaVersion")]
+        public int? SchemaVersion { get; init; }
+    }
+
+    private sealed class ShippingKnowledgeMetadata
+    {
+        [JsonProperty("source")]
+        public string Source { get; init; } = "";
+
+        [JsonProperty("category")]
+        public string Category { get; init; } = "";
+
+        [JsonProperty("tags")]
+        public IReadOnlyList<string> Tags { get; init; } = [];
+
+        [JsonProperty("chunkIndex")]
+        public int ChunkIndex { get; init; }
     }
 }

@@ -8,4 +8,13 @@ public interface IShippingAgentService
         string prompt,
         IEnumerable<ChatMessage> history,
         CancellationToken cancellationToken = default);
+
+    Task<ShippingKnowledgeItem> CreateKnowledgeItemAsync(
+        CreateShippingKnowledgeItem request,
+        CancellationToken cancellationToken = default);
+
+    Task<ShippingKnowledgePage> GetKnowledgeItemsAsync(
+        string? continuationToken,
+        int pageSize,
+        CancellationToken cancellationToken = default);
 }
